@@ -1,0 +1,369 @@
+---
+title: "Spotify Analysis"
+author: "Souradip Goswami 19210273"
+date: "30/03/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(!require(ggplot2))
+{
+install.packages("ggplot2")
+  library(ggplot2)
+}
+if(!require(devtools))
+{
+library(devtools)
+install_github("vqv/ggbiplot")
+}
+if(!require(ggbiplot))
+{
+library(ggbiplot)
+}
+if(!require(corrplot))
+{
+library(corrplot)
+}
+if(!require(factoextra))
+{
+install.packages("factoextra")
+library(factoextra)
+}
+if(!require(parallelDist))
+{
+install.packages("parallelDist")
+library(parallelDist)
+}
+if(!require(mclust))
+{
+install.packages("mclust")
+library(mclust)
+}
+if(!require(ggrepel))
+{
+install.packages("ggrepel")
+library(ggrepel)
+}
+if(!require(poLCA))
+{
+install.packages("poLCA")
+library(poLCA)
+}
+if(!require(vegan))
+{
+install.packages("vegan")
+library(vegan)
+}
+if(!require(caTools))
+{
+install.packages("caTools")
+library(caTools)
+}
+if(!require(randomForest))
+{
+install.packages("randomForest")
+library(randomForest)
+}
+if(!require(caret))
+{
+install.packages("caret")
+library(caret)
+}
+if(!require())
+{
+install.packages("e1071")
+library(e1071)
+}
+```
+# Spotify Analysis
+## Import Training Data 
+
+The training data is being imported and the unnecessary columns have been dropped. 
+
+
+```{r 1,include=  TRUE,echo=TRUE}
+spotify_data=read.csv(file.choose(),header = TRUE)
+spotify_data$artist_name<- NULL
+spotify_data$track_name<-NULL
+spotify_data$track_id<- NULL
+spotify_data$popularity<-NULL
+spotify_data$time_signature<-NULL
+spotify_data$duration_ms<-NULL
+spotify_data$key<- NULL
+spotify_data$mode<-NULL
+head(spotify_data)
+```
+
+##Checking the summary of the data
+```{r 2,include=TRUE,echo=TRUE}
+summary(spotify_data)
+round(cor(spotify_data))
+```
+
+##Scaling the data before Clustering and PCA
+
+```{r 3, include=TRUE,echo=TRUE}
+spotify_datanew<-scale(spotify_data)
+summary(spotify_datanew)
+```
+
+
+```{r 4,include=TRUE,echo=TRUE}
+WGSS<-rep(0,10)
+n<-nrow(spotify_datanew)
+for(k in 1:10)
+{
+  WGSS[k]<-sum(kmeans(spotify_train1, centers = k, nstart = 50)$withinss)
+}
+plot(1:10, WGSS, type="b", xlab="k", ylab="Within group sum of squares",main = "Graph to obtain relevant number of clusters, K")
+
+```
+##Calinski-Harabasz Index to determine the clusters
+```{r 5,include=TRUE,echo=TRUE}
+K<-10
+N <- nrow(spotify_datanew)
+wgss=bgss=rep(NA,K)
+ch=rep(NA,K)
+for (k in 1:K) 
+{
+  # run kmeans for each value of k
+  fit <- kmeans(spotify_datanew, centers = k, nstart = 50)
+  wgss[k] <- fit$tot.withinss # store total within sum of squares
+  bgss[k] <- fit$betweenss
+  ch[k] <- ( bgss[k]/(k - 1) ) / ( wgss[k]/(N - k) )
+}
+ch[1]=0
+plot(1:K, ch, type = "b", ylab = "Calinski-Hrabasz Indez", xlab = "K", main = "Selection of Optimal number of clusters")
+
+```
+
+
+
+
+
+
+##K means Clustering to tag each observations in a cluster
+```{r 6,include=TRUE,echo=TRUE}
+km2 <- kmeans(spotify_datanew,2,nstart = 50)
+km_cl2 <- km2$cluster
+km_ct2 <- data.frame(km2$centers,clust = rownames(km2$centers))
+km_cl2
+km3 <- kmeans(spotify_datanew,3,nstart = 50)
+km_cl3 <- km3$cluster
+km_ct3 <- data.frame(km3$centers,clust = rownames(km3$centers))
+km_cl3
+```
+
+
+##Performing the PCA 
+```{r 7,include=TRUE,echo=TRUE}
+pca_new <- prcomp(spotify_datanew)
+summary(pca_new)
+var1<-get_pca_var(pca_new)
+var1
+corrplot(var1$cos2)
+```
+
+##Checking with Model based Clustering
+```{r 8,include=TRUE,echo=TRUE}
+model_clust = Mclust(spotify_datanew,G=1:4)
+ summary(model_clust)
+
+model_clust$BIC
+```
+
+
+##interpreting the PCA results using GGplot
+```{r 9,include=TRUE,echo=TRUE}
+pr1 <- data.frame(pca_new$x, clust = factor(km_cl2))
+datapc <- data.frame(varnames = rownames(pca_new$rotation), pca_new$rotation)
+x <- "PC1"
+y <- "PC2"
+
+data <- data.frame(obsnames=seq(nrow(pca_new$x)), pca_new$x)
+
+mult <- min(
+  (max(data[,y]) - min(data[,y])/(max(datapc[,y])-min(datapc[,y]))),
+  (max(data[,x]) - min(data[,x])/(max(datapc[,x])-min(datapc[,x]))))
+datapc <- transform(datapc,
+                    v1 = .9 * mult * (get(x)),
+                    v2 = .9 * mult * (get(y)))
+
+ggplot(pr1, aes(x=PC1, y=PC2)) +
+  geom_hline(aes(yintercept=0), size=.2) + 
+  geom_vline(aes(xintercept=0), size=.2) +
+  coord_equal() +
+  geom_point(aes(color = clust),size = 0.2) +
+  geom_segment(data = datapc, aes(x=0, y=0, xend=v1, yend=v2), arrow = arrow(length=unit(0.2, "cm"))) +
+  geom_text_repel(data = datapc, aes(label=varnames),point.padding = -10,segment.size = 0.5) +
+  theme_dark()+
+  scale_color_brewer(palette = "Pastel1")+
+  guides(colour = guide_legend(override.aes = list(size=3)))+
+  labs(title = "Clusters with PCA and Factor Loading",color = "Cluster")
+
+
+
+pr2 <- data.frame(pca_new$x, clust = factor(km_cl3))
+datapc <- data.frame(varnames = rownames(pca_new$rotation), pca_new$rotation)
+x <- "PC1"
+y <- "PC2"
+
+data <- data.frame(obsnames=seq(nrow(pca_new$x)), pca_new$x)
+
+mult <- min(
+  (max(data[,y]) - min(data[,y])/(max(datapc[,y])-min(datapc[,y]))),
+  (max(data[,x]) - min(data[,x])/(max(datapc[,x])-min(datapc[,x]))))
+datapc <- transform(datapc,
+                    v1 = .9 * mult * (get(x)),
+                    v2 = .9 * mult * (get(y)))
+
+ggplot(pr2, aes(x=PC1, y=PC2)) +
+  geom_hline(aes(yintercept=0), size=.2) + 
+  geom_vline(aes(xintercept=0), size=.2) +
+  coord_equal() +
+  geom_point(aes(color = clust),size = 0.2) +
+  geom_segment(data = datapc, aes(x=0, y=0, xend=v1, yend=v2), arrow = arrow(length=unit(0.2, "cm"))) +
+  geom_text_repel(data = datapc, aes(label=varnames),point.padding = -10,segment.size = 0.5) +
+  theme_dark()+
+  scale_color_brewer(palette = "Pastel1")+
+  guides(colour = guide_legend(override.aes = list(size=3)))+
+  labs(title = "Clusters with PCA and Factor Loading",color = "Cluster")
+
+
+```
+#Preparing Data for Supervised Machine learning using PC1 to PC6
+```{r 10,include=TRUE,echo=TRUE}
+spotify_final1<-data.frame(pca_new$x[,1:6],km_cl2)
+spotify_final1
+spotify_final2<-data.frame(pca_new$x[,1:6],km_cl3)
+spotify_final2
+```
+##Splitting the data into training,validation and testing
+```{r 11,include=TRUE,echo=TRUE}
+allrows1 <- 1:nrow(spotify_final1)
+
+set.seed(7)
+training_set1 <- sample(allrows1, replace = F, size = 0.7*length(allrows1))
+test_valrows1 <- allrows1[-training_set1]
+validation_set1 <- sample(test_valrows1, replace=F, size = 1*length(test_valrows1))
+##validation_set1 <- test_valrows1[-which(test_valrows1 %in% testing_set1)]
+
+train_data1 <- spotify_final1[training_set1,]
+##test_data1 <- spotify_final1[testing_set1,]
+validation_data1 <- spotify_final1[validation_set1,]
+
+allrows2 <- 1:nrow(spotify_final2)
+
+set.seed(7)
+training_set2 <- sample(allrows2, replace = F, size = 0.7*length(allrows2))
+test_valrows2 <- allrows2[-training_set2]
+validation_set2 <- sample(test_valrows2, replace=F, size = 1*length(test_valrows2))
+##validation_set2 <- test_valrows2[-which(test_valrows2 %in% testing_set2)]
+
+train_data2 <- spotify_final2[training_set2,]
+##test_data2 <- spotify_final2[testing_set2,]
+validation_data2 <- spotify_final2[validation_set1,]
+```
+
+##Random Forest Algorithm
+```{r 12,include=TRUE,echo=TRUE}
+train_data1$km_cl2<-as.factor(train_data1$km_cl2)
+str(train_data1$km_cl2)
+rand_forest1<-randomForest(km_cl2~.,data = train_data1)
+train_data2$km_cl3<-as.factor(train_data2$km_cl3)
+str(train_data2$km_cl3)
+rand_forest2<-randomForest(km_cl3~.,data = train_data2)
+```
+##interpreting the Random Forest for 2 clusters
+```{r 13,include=TRUE,echo=TRUE}
+print(rand_forest1)
+plot(rand_forest1)
+varImpPlot(rand_forest1,sort=T)
+var.imp = data.frame(importance(rand_forest1,  
+                                 type=2))
+# make row names as columns
+var.imp$Variables = row.names(var.imp)  
+print(var.imp[order(var.imp$MeanDecreaseGini,decreasing = T),])
+```
+
+##interpreting the Random Forest for 3 clusters
+```{r 14,include=TRUE,echo=TRUE}
+print(rand_forest2)
+plot(rand_forest2)
+varImpPlot(rand_forest1,sort=T)
+var.imp1 = data.frame(importance(rand_forest2,  
+                                 type=2))
+# make row names as columns
+var.imp1$Variables = row.names(var.imp1)  
+print(var.imp1[order(var.imp1$MeanDecreaseGini,decreasing = T),])
+```
+
+##Checking Random Forest with Validation Set for 2 clusters
+```{r 15,include=TRUE,echo=TRUE}
+validation_data1$predicted_class<-predict(rand_forest1,validation_data1)
+validation_data1$km_cl2<-as.factor(validation_data1$km_cl2)
+str(validation_data1$km_cl2)
+print(  
+confusionMatrix(data=validation_data1$predicted_class,  
+                reference=validation_data1$km_cl2))
+```
+
+##Checking Random Forest with Validation Set for 3 clusters
+```{r 16,include=TRUE,echo=TRUE}
+validation_data2$predicted_class<-predict(rand_forest2,validation_data2)
+validation_data2$km_cl3<-as.factor(validation_data2$km_cl3)
+str(validation_data2$km_cl3)
+print(  
+confusionMatrix(data=validation_data2$predicted_class,  
+                reference=validation_data2$km_cl3))
+```
+
+##Support Vector Machine Algorithm for 2 clusters
+```{r 17,include=TRUE,echo=TRUE}
+svm_model1<-svm(km_cl2~.,data=train_data1)
+summary(svm_model1)
+table(predict(svm_model1), train_data1$km_cl2, dnn=c("Prediction", "Actual"))
+confusionMatrix(train_data1$km_cl2, predict(svm_model1))
+```
+##Support Vector Machine Algorithm for 3 clusters
+```{r 18,include=TRUE,echo=TRUE}
+svm_model2<-svm(km_cl3~.,data=train_data2)
+summary(svm_model2)
+table(predict(svm_model2), train_data2$km_cl3, dnn=c("Prediction", "Actual"))
+confusionMatrix(train_data2$km_cl3, predict(svm_model2))
+```
+
+##Prediction for SVM using Validation Set for 2 clusters
+```{r 19,include=TRUE,echo=TRUE}
+validation_data1$pred_svm1 <- predict(svm_model1,validation_data1)
+confusionMatrix(data=validation_data1$pred_svm1, reference=validation_data1$km_cl2)
+```
+##Prediction for SVM using Validation Set for 3 clusters
+```{r 20,include=TRUE,echo=TRUE}
+validation_data2$pred_svm2 <- predict(svm_model2,validation_data2)
+confusionMatrix(data=validation_data2$pred_svm2, reference=validation_data2$km_cl3)
+```
+
+##Naive Bayes Classifier for 2 clusters
+```{r 21,include=TRUE,echo=TRUE}
+model_naive1 = train(train_data1[,-10],train_data1$km_cl2,'nb',trControl=trainControl(method='cv',number=10))
+model_naive1
+```
+
+##Naive Bayes Classifier for 3 clusters
+```{r 22,include=TRUE,echo=TRUE}
+model_naive2 = train(train_data2[,-10],train_data2$km_cl3,'nb',trControl=trainControl(method='cv',number=10))
+model_naive2
+```
+
+##Prediction of Naive Bayes using Validation set for 2 Clusters
+```{r 23,include=TRUE,echo=TRUE}
+Predict_naive1 <- predict(model_naive1,newdata = validation_data1)
+confusionMatrix(Predict_naive1, validation_data1$km_cl2 )
+```
+##Prediction of Naive Bayes using Validation set for 3 Clusters
+```{r 24,include=TRUE,echo=TRUE}
+Predict_naive2 <- predict(model_naive2,newdata = validation_data2)
+confusionMatrix(Predict_naive2, validation_data2$km_cl3 )
+```
